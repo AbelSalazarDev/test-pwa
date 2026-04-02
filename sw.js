@@ -1,9 +1,11 @@
-const CACHE_NAME = 'pwa-camera-v1';
+const CACHE_NAME = 'pwa-camera-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icons/camera.svg'
+  './icons/camera.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', event => {
