@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#e94560" />
+  <meta name="description" content="PWA Camera App – toma fotos desde tu navegador" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/camera.svg" type="image/svg+xml" />
+  <title>PWA Camera</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      color: #eaeaea;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100dvh;
+    }
+
+    header {
+      width: 100%;
+      padding: 12px 16px;
+      background: #16213e;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+    }
+
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #e94560; }
+
+    main {
+      flex: 1;
+      width: 100%;
+      max-width: 640px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── Viewfinder ── */
+    .viewfinder {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4/3;
+      background: #000;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,.6);
+    }
+
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    #placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #666;
+      font-size: 0.95rem;
+      text-align: center;
+      padding: 16px;
+    }
+
+    #placeholder svg { opacity: .4; }
+
+    /* corner guides */
+    .guide {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-color: rgba(233,69,96,.7);
+      border-style: solid;
+      pointer-events: none;
+    }
+    .guide.tl { top: 14px; left: 14px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+    .guide.tr { top: 14px; right: 14px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+    .guide.bl { bottom: 14px; left: 14px; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+    .guide.br { bottom: 14px; right: 14px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+    /* flash effect */
+    #flash {
+      position: absolute;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.05s;
+    }
+    #flash.active { opacity: 1; }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+    }
+
+    .btn {
+      border: none;
+      cursor: pointer;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform .15s, opacity .15s;
+    }
+    .btn:active { transform: scale(.9); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+
+    #btnStart {
+      width: 52px;
+      height: 52px;
+      background: #0f3460;
+      color: #eaeaea;
+    }
+
+    #btnCapture {
+      width: 72px;
+      height: 72px;
+      background: #e94560;
+      box-shadow: 0 0 0 6px rgba(233,69,96,.25);
+    }
+    #btnCapture:not(:disabled):hover {
+      box-shadow: 0 0 0 10px rgba(233,69,96,.2);
+    }
+
+    #btnSwitch {
+      width: 52px;
+      height: 52px;
+      background: #0f3460;
+      color: #eaeaea;
+    }
+
+    /* ── Gallery ── */
+    .gallery-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .gallery-header h2 { font-size: 1rem; color: #aaa; }
+
+    #btnClearAll {
+      font-size: 0.8rem;
+      background: none;
+      border: 1px solid #444;
+      color: #aaa;
+      padding: 4px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: border-color .2s, color .2s;
+    }
+    #btnClearAll:hover { border-color: #e94560; color: #e94560; }
+
+    #gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 10px;
+    }
+
+    .photo-item {
+      position: relative;
+      aspect-ratio: 4/3;
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      background: #16213e;
+    }
+
+    .photo-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform .2s;
+    }
+    .photo-item:hover img { transform: scale(1.05); }
+
+    .photo-item .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    .photo-item:hover .overlay,
+    .photo-item:focus-within .overlay { opacity: 1; }
+
+    .overlay-btn {
+      background: rgba(255,255,255,.15);
+      border: none;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #fff;
+      transition: background .2s;
+    }
+    .overlay-btn:hover { background: rgba(255,255,255,.3); }
+
+    #emptyMsg {
+      grid-column: 1/-1;
+      text-align: center;
+      color: #555;
+      font-size: 0.9rem;
+      padding: 20px 0;
+    }
+
+    /* ── Lightbox ── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.9);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img {
+      max-width: 95vw;
+      max-height: 90dvh;
+      border-radius: 12px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.8);
+    }
+    #lightboxClose {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(255,255,255,.1);
+      border: none;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      color: #fff;
+      font-size: 1.4rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #16213e;
+      color: #eaeaea;
+      padding: 10px 20px;
+      border-radius: 24px;
+      font-size: 0.88rem;
+      box-shadow: 0 4px 16px rgba(0,0,0,.5);
+      border: 1px solid #e94560;
+      transition: transform .3s ease;
+      white-space: nowrap;
+      z-index: 200;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e94560" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+    <circle cx="12" cy="13" r="4"/>
+  </svg>
+  <h1>PWA Camera</h1>
+</header>
+
+<main>
+  <!-- Viewfinder -->
+  <div class="viewfinder">
+    <video id="video" autoplay playsinline muted></video>
+    <div id="placeholder">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#eaeaea" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+      <span>Pulsa <strong>Iniciar Cámara</strong> para comenzar</span>
+    </div>
+    <div class="guide tl"></div>
+    <div class="guide tr"></div>
+    <div class="guide bl"></div>
+    <div class="guide br"></div>
+    <div id="flash"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn" id="btnStart" title="Iniciar / Detener cámara" aria-label="Iniciar cámara">
+      <!-- play icon -->
+      <svg id="iconPlay" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <!-- stop icon (hidden) -->
+      <svg id="iconStop" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+    </button>
+
+    <button class="btn" id="btnCapture" disabled title="Tomar foto" aria-label="Tomar foto">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="4"/>
+        <circle cx="12" cy="12" r="9" stroke-dasharray="2 4"/>
+      </svg>
+    </button>
+
+    <button class="btn" id="btnSwitch" disabled title="Cambiar cámara" aria-label="Cambiar cámara">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1 4 1 10 7 10"/>
+        <polyline points="23 20 23 14 17 14"/>
+        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Gallery -->
+  <div class="gallery-header">
+    <h2>Fotos (<span id="photoCount">0</span>)</h2>
+    <button id="btnClearAll">Borrar todo</button>
+  </div>
+  <div id="gallery">
+    <p id="emptyMsg">Aún no hay fotos</p>
+  </div>
+</main>
+
+<!-- Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Vista previa de foto">
+  <button id="lightboxClose" aria-label="Cerrar">&#x2715;</button>
+  <img id="lightboxImg" src="" alt="Foto ampliada" />
+</div>
+
+<!-- Toast -->
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- Hidden canvas for capture -->
+<canvas id="canvas" style="display:none"></canvas>
+
+<script>
+  'use strict';
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const video       = document.getElementById('video');
+  const canvas      = document.getElementById('canvas');
+  const placeholder = document.getElementById('placeholder');
+  const flash       = document.getElementById('flash');
+  const btnStart    = document.getElementById('btnStart');
+  const btnCapture  = document.getElementById('btnCapture');
+  const btnSwitch   = document.getElementById('btnSwitch');
+  const btnClearAll = document.getElementById('btnClearAll');
+  const gallery     = document.getElementById('gallery');
+  const emptyMsg    = document.getElementById('emptyMsg');
+  const photoCount  = document.getElementById('photoCount');
+  const lightbox    = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+  const lightboxClose = document.getElementById('lightboxClose');
+  const iconPlay    = document.getElementById('iconPlay');
+  const iconStop    = document.getElementById('iconStop');
+  const toast       = document.getElementById('toast');
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let stream = null;
+  let facingMode = 'environment'; // rear camera first
+  let photos = [];  // array of dataURLs
+  let toastTimer = null;
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  // ── Camera ────────────────────────────────────────────────────────────────
+  async function startCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      placeholder.style.display = 'none';
+      btnCapture.disabled = false;
+      btnSwitch.disabled = false;
+      iconPlay.style.display = 'none';
+      iconStop.style.display = 'block';
+      btnStart.title = 'Detener cámara';
+      btnStart.setAttribute('aria-label', 'Detener cámara');
+    } catch (err) {
+      console.error(err);
+      let msg = 'No se pudo acceder a la cámara.';
+      if (err.name === 'NotAllowedError') msg = 'Permiso de cámara denegado.';
+      else if (err.name === 'NotFoundError') msg = 'No se encontró ninguna cámara.';
+      showToast(msg);
+    }
+  }
+
+  function stopCamera() {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+    placeholder.style.display = '';
+    btnCapture.disabled = true;
+    btnSwitch.disabled = true;
+    iconPlay.style.display = 'block';
+    iconStop.style.display = 'none';
+    btnStart.title = 'Iniciar cámara';
+    btnStart.setAttribute('aria-label', 'Iniciar cámara');
+  }
+
+  btnStart.addEventListener('click', () => {
+    if (stream) stopCamera(); else startCamera();
+  });
+
+  btnSwitch.addEventListener('click', async () => {
+    facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    stopCamera();
+    await startCamera();
+  });
+
+  // ── Capture ───────────────────────────────────────────────────────────────
+  btnCapture.addEventListener('click', () => {
+    if (!stream) return;
+
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    canvas.width  = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+
+    // Mirror if front-facing
+    if (facingMode === 'user') {
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, w, h);
+
+    const dataURL = canvas.toDataURL('image/jpeg', 0.92);
+    photos.unshift(dataURL);
+    renderGallery();
+    showToast('📷 Foto tomada');
+
+    // Flash effect
+    flash.classList.add('active');
+    setTimeout(() => flash.classList.remove('active'), 120);
+  });
+
+  // ── Gallery ───────────────────────────────────────────────────────────────
+  function renderGallery() {
+    photoCount.textContent = photos.length;
+    gallery.innerHTML = '';
+
+    if (photos.length === 0) {
+      gallery.appendChild(emptyMsg);
+      return;
+    }
+
+    photos.forEach((src, index) => {
+      const item = document.createElement('div');
+      item.className = 'photo-item';
+      item.innerHTML = `
+        <img src="${src}" alt="Foto ${index + 1}" loading="lazy" />
+        <div class="overlay">
+          <button class="overlay-btn" data-action="view" data-index="${index}" title="Ver" aria-label="Ver foto ${index + 1}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          <button class="overlay-btn" data-action="download" data-index="${index}" title="Descargar" aria-label="Descargar foto ${index + 1}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+          <button class="overlay-btn" data-action="delete" data-index="${index}" title="Eliminar" aria-label="Eliminar foto ${index + 1}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e94560" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+          </button>
+        </div>`;
+      gallery.appendChild(item);
+    });
+  }
+
+  gallery.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const index  = parseInt(btn.dataset.index, 10);
+
+    if (action === 'view') {
+      lightboxImg.src = photos[index];
+      lightbox.classList.add('open');
+    } else if (action === 'download') {
+      const a = document.createElement('a');
+      a.href = photos[index];
+      a.download = `foto-${Date.now()}.jpg`;
+      a.click();
+    } else if (action === 'delete') {
+      photos.splice(index, 1);
+      renderGallery();
+      showToast('Foto eliminada');
+    }
+  });
+
+  btnClearAll.addEventListener('click', () => {
+    if (photos.length === 0) return;
+    photos = [];
+    renderGallery();
+    showToast('Todas las fotos eliminadas');
+  });
+
+  // ── Lightbox ──────────────────────────────────────────────────────────────
+  lightboxClose.addEventListener('click', () => lightbox.classList.remove('open'));
+  lightbox.addEventListener('click', e => { if (e.target === lightbox) lightbox.classList.remove('open'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') lightbox.classList.remove('open'); });
+
+  // ── Service Worker ────────────────────────────────────────────────────────
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(console.error);
+    });
+  }
+</script>
+</body>
+</html>
